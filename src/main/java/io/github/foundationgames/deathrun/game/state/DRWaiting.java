@@ -12,7 +12,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
-import net.minecraft.world.GameRules;
+import net.minecraft.world.rule.GameRules;
 import xyz.nucleoid.fantasy.RuntimeWorldConfig;
 import xyz.nucleoid.plasmid.api.game.GameActivity;
 import xyz.nucleoid.plasmid.api.game.GameOpenContext;
@@ -53,7 +53,7 @@ public class DRWaiting {
         var map = DeathRunMap.create(server, mapCfg);
         var worldCfg = new RuntimeWorldConfig().setTimeOfDay(mapCfg.time()).setGenerator(map.createGenerator(server));
 
-        worldCfg.setGameRule(GameRules.DO_FIRE_TICK, false);
+        worldCfg.setGameRule(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER, 0);
 
         return ctx.openWithWorld(worldCfg, (game, world) -> {
             var waiting = new DRWaiting(world, game, map, cfg);

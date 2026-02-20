@@ -10,7 +10,7 @@ public class ActivatorTridentEntityBehavior extends ProjectileEntityBehavior<Tri
     @Override
     public void onHitBlock(TridentEntity entity, DRGame game) {
         AtomicReference<DeathTrapZone> nearestZone = new AtomicReference<>();
-        var ePos = entity.getPos();
+        var ePos = entity.getEntityPos();
         game.map.trapZones.forEach((pos, zone) -> {
             if (nearestZone.get() == null || zone.getZone().center().distanceTo(ePos) < nearestZone.get().getZone().center().distanceTo(ePos)) {
                 nearestZone.set(zone);

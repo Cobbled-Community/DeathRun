@@ -103,7 +103,7 @@ public class DeathRunMap {
         template.getMetadata().getRegions("checkpoint").forEach(reg -> {
             var bounds = reg.getBounds();
             float yaw = 0;
-            if (reg.getData().contains("yaw")) yaw = reg.getData().getFloat("yaw");
+            if (reg.getData().contains("yaw")) yaw = reg.getData().getFloat("yaw").orElseThrow();
             checkpoints.add(new CheckpointZone(bounds, yaw));
         });
 

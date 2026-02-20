@@ -12,13 +12,14 @@ import net.minecraft.util.Identifier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import xyz.nucleoid.plasmid.api.game.GameType;
+import xyz.nucleoid.plasmid.api.game.GameTypes;
 
 public class DeathRun implements ModInitializer {
     public static final String MOD_ID = "deathrun";
 
     public static final Logger LOG = LogManager.getLogger(MOD_ID);
 
-    public static final GameType<DeathRunConfig> TYPE = GameType.register(
+    public static final GameType<DeathRunConfig> TYPE = GameTypes.register(
             id("deathrun"),
             DeathRunConfig.CODEC,
             DRWaiting::open

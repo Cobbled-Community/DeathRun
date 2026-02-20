@@ -11,7 +11,7 @@ import java.util.List;
 
 public record MapText(Vec3d pos, TextData text) {
     public record TextData(List<Text> lines) {
-        public static final Codec<Text> JSON_TEXT_CODEC = TextCodecs.STRINGIFIED_CODEC;
+        public static final Codec<Text> JSON_TEXT_CODEC = TextCodecs.CODEC;
 
         public static final Codec<TextData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
                 Codec.list(JSON_TEXT_CODEC).fieldOf("lines").forGetter(TextData::lines)

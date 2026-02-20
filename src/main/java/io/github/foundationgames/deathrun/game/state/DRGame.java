@@ -25,10 +25,13 @@ import net.minecraft.entity.projectile.TridentEntity;
 import net.minecraft.fluid.Fluids;
 import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
 import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
+import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
 import net.minecraft.particle.ParticleTypes;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
@@ -87,7 +90,9 @@ public class DRGame {
 
         game.listen(ItemUseEvent.EVENT, items::processUse);
     }
-
+    private static void playSoundToPlayer(ServerPlayerEntity player, SoundEvent sound, SoundCategory category, float volume, float pitch) {
+        player.networkHandler.sendPacket(new PlaySoundFromEntityS2CPacket(RegistryEntry.of(sound), category, player, volume, pitch, player.getEntityWorld().getRandom().nextLong()));
+    }
     public static void open(GameSpace space, DRWaiting waiting) {
         space.setActivity(game -> {
             var deathRun = new DRGame(game, waiting);
@@ -228,17 +233,17 @@ public class DRGame {
         markFinished(player);
 
         if (place == 1) {
-            pl.playSoundToPlayer(SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), SoundCategory.MASTER, 0.85f, 0.95f);
-            pl.playSoundToPlayer(SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), SoundCategory.MASTER, 0.85f, 0.59f);
-            pl.playSoundToPlayer(SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.85f, 0.95f);
-            pl.playSoundToPlayer(SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1, 1);
-            pl.playSoundToPlayer(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundCategory.MASTER, 0.3f, 2);
+            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), SoundCategory.MASTER, 0.85f, 0.95f);
+            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), SoundCategory.MASTER, 0.85f, 0.59f);
+            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.85f, 0.95f);
+            playSoundToPlayer(pl, SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1, 1);
+            playSoundToPlayer(pl, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundCategory.MASTER, 0.3f, 2);
 
             this.endCountdown = END_COUNTDOWN;
         } else {
-            pl.playSoundToPlayer(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.MASTER, 1, 0.945f);
-            pl.playSoundToPlayer(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.MASTER, 1, 0.59f);
-            pl.playSoundToPlayer(SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.85f, 0.785f);
+            playSoundToPlayer(pl, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.MASTER, 1, 0.945f);
+            playSoundToPlayer(pl, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.MASTER, 1, 0.59f);
+            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.85f, 0.785f);
         }
 
         var broadcast = Text.translatable("message.deathrun.player_finished", pl.getNameForScoreboard()).formatted(Formatting.LIGHT_PURPLE)
@@ -365,31 +370,31 @@ public class DRGame {
             // Void death
             player -> {
                 var serverP = player.getPlayer();
-                return serverP.getPos().y < 0;
+                return serverP.getEntityPos().y < 0;
             },
             // Water death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getWorld();
-                var fluid = world.getFluidState(BlockPos.ofFloored(serverP.getPos().add(0, 0.65, 0))).getFluid();
+                var world = serverP.getEntityWorld();
+                var fluid = world.getFluidState(BlockPos.ofFloored(serverP.getEntityPos().add(0, 0.65, 0))).getFluid();
                 return fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER;
             },
             // Lightning death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getWorld();
+                var world = serverP.getEntityWorld();
                 return world.getEntitiesByClass(LightningEntity.class, serverP.getBoundingBox().expand(1.5, 1.5, 1.5), e -> true).size() > 0;
             },
             // Arrow death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getWorld();
+                var world = serverP.getEntityWorld();
                 return world.getEntitiesByClass(ArrowEntity.class, serverP.getBoundingBox().expand(0.08, 0.08, 0.08), e -> true).size() > 0;
             },
             // Falling hazard death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getWorld();
+                var world = serverP.getEntityWorld();
                 return world.getEntitiesByClass(FallingBlockEntity.class, serverP.getBoundingBox(),
                         e -> e.getBlockState().isOf(Blocks.POINTED_DRIPSTONE)).size() > 0;
             }
@@ -435,7 +440,7 @@ public class DRGame {
                     if (predicate.test(this)) {
                         var pl = getPlayer();
                         logic.resetActive(pl);
-                        pl.playSoundToPlayer(SoundEvents.ENTITY_GENERIC_HURT, SoundCategory.PLAYERS, 1, 1);
+                        playSoundToPlayer(pl, SoundEvents.ENTITY_GENERIC_HURT, SoundCategory.PLAYERS, 1, 1);
                     }
                 }
                 for (CheckpointZone zone : game.map.checkpoints) {
@@ -466,8 +471,8 @@ public class DRGame {
         private void notifyCheckpoint() {
             var player = getPlayer();
             player.sendMessage(Text.translatable("message.deathrun.checkpoint").formatted(Formatting.GREEN), false);
-            player.playSoundToPlayer(SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(), SoundCategory.MASTER, 0.9f, 0.79f);
-            player.playSoundToPlayer(SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.9f, 0.785f);
+            playSoundToPlayer(player, SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(), SoundCategory.MASTER, 0.9f, 0.79f);
+            playSoundToPlayer(player, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.9f, 0.785f);
         }
     }
 
