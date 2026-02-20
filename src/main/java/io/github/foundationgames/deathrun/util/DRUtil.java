@@ -1,16 +1,9 @@
 package io.github.foundationgames.deathrun.util;
 
-import eu.pb4.polymer.core.api.item.PolymerItemUtils;
 import eu.pb4.polymer.core.api.utils.PolymerUtils;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtHelper;
-import net.minecraft.nbt.NbtList;
+import net.minecraft.world.item.ItemStack;
 import xyz.nucleoid.plasmid.api.game.GameActivity;
 import xyz.nucleoid.plasmid.api.game.rule.GameRuleType;
-
-import java.util.UUID;
 
 public enum DRUtil {
     ;

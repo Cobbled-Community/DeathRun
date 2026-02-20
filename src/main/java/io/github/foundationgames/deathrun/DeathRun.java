@@ -5,10 +5,10 @@ import eu.pb4.polymer.core.api.other.PolymerComponent;
 import io.github.foundationgames.deathrun.game.DeathRunConfig;
 import io.github.foundationgames.deathrun.game.state.DRWaiting;
 import net.fabricmc.api.ModInitializer;
-import net.minecraft.component.ComponentType;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.Registry;
+import net.minecraft.resources.Identifier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import xyz.nucleoid.plasmid.api.game.GameType;
@@ -25,10 +25,10 @@ public class DeathRun implements ModInitializer {
             DRWaiting::open
     );
 
-    public static final ComponentType<String> BEHAVIOR = Registry.register(Registries.DATA_COMPONENT_TYPE, id("behavior"), ComponentType.<String>builder().codec(Codec.STRING).build());
+    public static final DataComponentType<String> BEHAVIOR = Registry.register(BuiltInRegistries.DATA_COMPONENT_TYPE, id("behavior"), DataComponentType.<String>builder().persistent(Codec.STRING).build());
 
     public static Identifier id(String path) {
-        return Identifier.of(MOD_ID, path);
+        return Identifier.fromNamespaceAndPath(MOD_ID, path);
     }
 
     @Override

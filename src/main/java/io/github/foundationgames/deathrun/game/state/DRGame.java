@@ -13,34 +13,34 @@ import io.github.foundationgames.deathrun.game.state.logic.entity.ActivatorTride
 import io.github.foundationgames.deathrun.game.state.logic.entity.DREntityLogic;
 import io.github.foundationgames.deathrun.game.state.logic.entity.EntityBehavior;
 import io.github.foundationgames.deathrun.util.DRUtil;
-import net.minecraft.block.ButtonBlock;
-import net.minecraft.block.Blocks;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.FallingBlockEntity;
-import net.minecraft.entity.LightningEntity;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.projectile.ArrowEntity;
-import net.minecraft.entity.projectile.TridentEntity;
-import net.minecraft.fluid.Fluids;
-import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.state.property.Properties;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.ButtonBlock;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.LightningBolt;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.entity.projectile.arrow.ThrownTrident;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.Holder;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.ChatFormatting;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import xyz.nucleoid.plasmid.api.game.GameActivity;
 import xyz.nucleoid.plasmid.api.game.GameCloseReason;
 import xyz.nucleoid.plasmid.api.game.GameSpace;
@@ -60,7 +60,7 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 public class DRGame {
-    public final ServerWorld world;
+    public final ServerLevel world;
     public final GameActivity game;
     public final DeathRunMap map;
     public final DeathRunConfig config;
@@ -90,8 +90,8 @@ public class DRGame {
 
         game.listen(ItemUseEvent.EVENT, items::processUse);
     }
-    private static void playSoundToPlayer(ServerPlayerEntity player, SoundEvent sound, SoundCategory category, float volume, float pitch) {
-        player.networkHandler.sendPacket(new PlaySoundFromEntityS2CPacket(RegistryEntry.of(sound), category, player, volume, pitch, player.getEntityWorld().getRandom().nextLong()));
+    private static void playSoundToPlayer(ServerPlayer player, SoundEvent sound, SoundSource category, float volume, float pitch) {
+        player.connection.send(new ClientboundSoundEntityPacket(Holder.direct(sound), category, player, volume, pitch, player.level().getRandom().nextLong()));
     }
     public static void open(GameSpace space, DRWaiting waiting) {
         space.setActivity(game -> {
@@ -103,29 +103,29 @@ public class DRGame {
             deathRun.players.forEach(deathRun.players::resetActive);
 
             deathRun.items.addBehavior("boost", (player, stack, hand) -> {
-                if (deathRun.players.get(player) instanceof Player gamePl && gamePl.started && !gamePl.finished && !player.getItemCooldownManager().isCoolingDown(stack)) {
-                    double yaw = Math.toRadians(-player.getYaw());
-                    var vel = new Vec3d(1.25 * Math.sin(yaw), 0.5, 1.25 * Math.cos(yaw));
-                    player.networkHandler.sendPacket(new EntityVelocityUpdateS2CPacket(player.getId(), vel));
-                    deathRun.world.getPlayers().forEach(p -> p.networkHandler.sendPacket(new ParticleS2CPacket(ParticleTypes.EXPLOSION, false, false, player.getX(), player.getY(), player.getZ(), 0, 0, 0, 0, 1)));
-                    deathRun.players.playSound(SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP, SoundCategory.PLAYERS, 0.75f, 0.69f);
-                    player.getItemCooldownManager().set(stack, 188);
-                    return ActionResult.SUCCESS_SERVER;
+                if (deathRun.players.get(player) instanceof Player gamePl && gamePl.started && !gamePl.finished && !player.getCooldowns().isOnCooldown(stack)) {
+                    double yaw = Math.toRadians(-player.getYRot());
+                    var vel = new Vec3(1.25 * Math.sin(yaw), 0.5, 1.25 * Math.cos(yaw));
+                    player.connection.send(new ClientboundSetEntityMotionPacket(player.getId(), vel));
+                    deathRun.world.players().forEach(p -> p.connection.send(new ClientboundLevelParticlesPacket(ParticleTypes.EXPLOSION, false, false, player.getX(), player.getY(), player.getZ(), 0, 0, 0, 0, 1)));
+                    deathRun.players.playSound(SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.PLAYERS, 0.75f, 0.69f);
+                    player.getCooldowns().addCooldown(stack, 188);
+                    return InteractionResult.SUCCESS_SERVER;
                 }
-                return ActionResult.PASS;
+                return InteractionResult.PASS;
             });
 
             deathRun.items.addBehavior("activator", (player, stack, hand) -> {
-                if (deathRun.players.get(player) instanceof Player gamePl && gamePl.started && !gamePl.finished && !player.getItemCooldownManager().isCoolingDown(stack)) {
+                if (deathRun.players.get(player) instanceof Player gamePl && gamePl.started && !gamePl.finished && !player.getCooldowns().isOnCooldown(stack)) {
                     var world = deathRun.world;
-                    var trident = new TridentEntity(world, player, stack);
-                    trident.setVelocity(player, player.getPitch(), player.getYaw(), 0, 3, 1);
+                    var trident = new ThrownTrident(world, player, stack);
+                    trident.shootFromRotation(player, player.getXRot(), player.getYRot(), 0, 3, 1);
                     deathRun.spawn(trident, new ActivatorTridentEntityBehavior());
-                    world.playSoundFromEntity(null, trident, SoundEvents.ITEM_TRIDENT_THROW.value(), SoundCategory.PLAYERS, 1, 1);
-                    player.getItemCooldownManager().set(stack, 200);
-                    return ActionResult.SUCCESS_SERVER;
+                    world.playSound(null, trident, SoundEvents.TRIDENT_THROW.value(), SoundSource.PLAYERS, 1, 1);
+                    player.getCooldowns().addCooldown(stack, 200);
+                    return InteractionResult.SUCCESS_SERVER;
                 }
-                return ActionResult.PASS;
+                return InteractionResult.PASS;
             });
 
             game.listen(GamePlayerEvents.OFFER, JoinOffer::acceptSpectators);
@@ -145,23 +145,23 @@ public class DRGame {
         });
     }
 
-    private ActionResult useBlock(ServerPlayerEntity player, Hand hand, BlockHitResult hit) {
+    private InteractionResult useBlock(ServerPlayer player, InteractionHand hand, BlockHitResult hit) {
         if (this.players.get(player) instanceof Player gamePlayer) {
             if (gamePlayer.team == DRTeam.DEATHS) {
                 var pos = hit.getBlockPos();
                 var state = world.getBlockState(pos);
-                if (state.getBlock() instanceof ButtonBlock button && !state.get(Properties.POWERED)) {
+                if (state.getBlock() instanceof ButtonBlock button && !state.getValue(BlockStateProperties.POWERED)) {
                     var trapZone = map.trapZones.get(pos);
                     if (trapZone != null) {
-                        world.setBlockState(pos, state.with(Properties.POWERED, true));
-                        world.scheduleBlockTick(pos, button, DEATH_TRAP_COOLDOWN);
+                        world.setBlockAndUpdate(pos, state.setValue(BlockStateProperties.POWERED, true));
+                        world.scheduleTick(pos, button, DEATH_TRAP_COOLDOWN);
                         trigger(trapZone);
-                        return ActionResult.SUCCESS;
+                        return InteractionResult.SUCCESS;
                     }
                 }
             }
         }
-        return ActionResult.PASS;
+        return InteractionResult.PASS;
     }
 
     public void trigger(DeathTrapZone trapZone) {
@@ -174,7 +174,7 @@ public class DRGame {
 
     public void openGate() {
         for (BlockPos pos : map.gate) {
-            if (world.getBlockState(pos).isOf(Blocks.IRON_BARS)) world.removeBlock(pos, false);
+            if (world.getBlockState(pos).is(Blocks.IRON_BARS)) world.removeBlock(pos, false);
         }
     }
 
@@ -183,7 +183,7 @@ public class DRGame {
     }
 
     public <E extends Entity> void spawn(E entity, EntityBehavior<E> behavior) {
-        world.spawnEntity(entity);
+        world.addFreshEntity(entity);
         entities.attach(entity, behavior);
     }
 
@@ -209,7 +209,7 @@ public class DRGame {
 
     public void markFinished(Player player) {
         var pl = player.getPlayer();
-        pl.getInventory().clear();
+        pl.getInventory().clearContent();
         player.finished = true;
     }
 
@@ -222,36 +222,36 @@ public class DRGame {
         int min = (int)Math.floor((float)totalSec / 60);
         int sec = totalSec % 60;
 
-        var timeText = Text.translatable("insert.deathrun.time", min, sec).formatted(Formatting.DARK_GRAY);
-        var text = Text.translatable("message.deathrun.finished")
-                .formatted(Formatting.BLUE)
-                .append(Text.translatable(getLocalizationForPlace(place), place).styled(style -> style.withColor(getColorForPlace(place)).withBold(true)))
+        var timeText = Component.translatable("insert.deathrun.time", min, sec).withStyle(ChatFormatting.DARK_GRAY);
+        var text = Component.translatable("message.deathrun.finished")
+                .withStyle(ChatFormatting.BLUE)
+                .append(Component.translatable(getLocalizationForPlace(place), place).withStyle(style -> style.withColor(getColorForPlace(place)).withBold(true)))
                 .append(timeText);
         var pl = player.getPlayer();
 
-        pl.sendMessage(text, false);
+        pl.displayClientMessage(text, false);
         markFinished(player);
 
         if (place == 1) {
-            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), SoundCategory.MASTER, 0.85f, 0.95f);
-            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_HARP.value(), SoundCategory.MASTER, 0.85f, 0.59f);
-            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.85f, 0.95f);
-            playSoundToPlayer(pl, SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 1, 1);
-            playSoundToPlayer(pl, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundCategory.MASTER, 0.3f, 2);
+            playSoundToPlayer(pl, SoundEvents.NOTE_BLOCK_HARP.value(), SoundSource.MASTER, 0.85f, 0.95f);
+            playSoundToPlayer(pl, SoundEvents.NOTE_BLOCK_HARP.value(), SoundSource.MASTER, 0.85f, 0.59f);
+            playSoundToPlayer(pl, SoundEvents.NOTE_BLOCK_BASS.value(), SoundSource.MASTER, 0.85f, 0.95f);
+            playSoundToPlayer(pl, SoundEvents.PLAYER_LEVELUP, SoundSource.MASTER, 1, 1);
+            playSoundToPlayer(pl, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.MASTER, 0.3f, 2);
 
             this.endCountdown = END_COUNTDOWN;
         } else {
-            playSoundToPlayer(pl, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.MASTER, 1, 0.945f);
-            playSoundToPlayer(pl, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.MASTER, 1, 0.59f);
-            playSoundToPlayer(pl, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.85f, 0.785f);
+            playSoundToPlayer(pl, SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.MASTER, 1, 0.945f);
+            playSoundToPlayer(pl, SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.MASTER, 1, 0.59f);
+            playSoundToPlayer(pl, SoundEvents.NOTE_BLOCK_BASS.value(), SoundSource.MASTER, 0.85f, 0.785f);
         }
 
-        var broadcast = Text.translatable("message.deathrun.player_finished", pl.getNameForScoreboard()).formatted(Formatting.LIGHT_PURPLE)
-                .append(Text.translatable(getLocalizationForPlace(place), place).styled(style -> style.withColor(getColorForPlace(place))))
+        var broadcast = Component.translatable("message.deathrun.player_finished", pl.getScoreboardName()).withStyle(ChatFormatting.LIGHT_PURPLE)
+                .append(Component.translatable(getLocalizationForPlace(place), place).withStyle(style -> style.withColor(getColorForPlace(place))))
                 .append(timeText);
         players.forEach(p -> {
             if (p != pl) {
-                p.sendMessage(broadcast, false);
+                p.displayClientMessage(broadcast, false);
             }
         });
 
@@ -287,34 +287,34 @@ public class DRGame {
     }
 
     public void broadcastRankings() {
-        var header = Text.literal("---- ").formatted(Formatting.GRAY).append(Text.translatable("message.deathrun.game_ended").formatted(Formatting.RED).append(Text.literal(" ----").formatted(Formatting.GRAY)));
-        var pedestal = new ArrayList<Text>();
+        var header = Component.literal("---- ").withStyle(ChatFormatting.GRAY).append(Component.translatable("message.deathrun.game_ended").withStyle(ChatFormatting.RED).append(Component.literal(" ----").withStyle(ChatFormatting.GRAY)));
+        var pedestal = new ArrayList<Component>();
         var places = new ArrayList<>(finished.keySet());
         for (int i = 0; i <= 2; i++) {
             int place = i + 1;
             if (i < places.size()) {
-                pedestal.add(Text.literal(Integer.toString(place))
-                        .styled(style -> style.withColor(getColorForPlace(place)).withBold(true))
-                        .append(Text.literal(" - "+places.get(i).getPlayer().getNameForScoreboard()).formatted(Formatting.GRAY).styled(style -> style.withBold(false)))
+                pedestal.add(Component.literal(Integer.toString(place))
+                        .withStyle(style -> style.withColor(getColorForPlace(place)).withBold(true))
+                        .append(Component.literal(" - "+places.get(i).getPlayer().getScoreboardName()).withStyle(ChatFormatting.GRAY).withStyle(style -> style.withBold(false)))
                 );
             }
         }
         players.getPlayers().forEach(player -> {
             if (player instanceof Player gamePlayer) {
                 var pl = player.getPlayer();
-                pl.sendMessage(header, false);
+                pl.displayClientMessage(header, false);
                 for (var text : pedestal) {
-                    pl.sendMessage(text, false);
+                    pl.displayClientMessage(text, false);
                 }
                 int idx = places.indexOf(gamePlayer);
                 if (idx >= 0) {
                     int place = idx + 1;
-                    pl.sendMessage(Text.translatable("message.deathrun.your_place", pl.getNameForScoreboard())
-                            .formatted(Formatting.BLUE)
-                            .append(Text.translatable(getLocalizationForPlace(place), place)
-                                    .styled(style -> style.withColor(getColorForPlace(place)).withBold(true))), false);
+                    pl.displayClientMessage(Component.translatable("message.deathrun.your_place", pl.getScoreboardName())
+                            .withStyle(ChatFormatting.BLUE)
+                            .append(Component.translatable(getLocalizationForPlace(place), place)
+                                    .withStyle(style -> style.withColor(getColorForPlace(place)).withBold(true))), false);
                 } else if (gamePlayer.team == DRTeam.RUNNERS) {
-                    pl.sendMessage(Text.translatable("message.deathrun.did_not_finish", pl.getNameForScoreboard()).formatted(Formatting.BLUE), false);
+                    pl.displayClientMessage(Component.translatable("message.deathrun.did_not_finish", pl.getScoreboardName()).withStyle(ChatFormatting.BLUE), false);
                 }
             }
         });
@@ -324,16 +324,16 @@ public class DRGame {
         if (startTimer > 0) {
             if (startTimer % 20 == 0) {
                 int sec = startTimer / 20;
-                var format = sec <= 3 ? Formatting.GREEN : Formatting.DARK_GREEN;
-                players.showTitle(Text.literal(Integer.toString(sec)).formatted(Formatting.BOLD, format), 19);
-                players.playSound(SoundEvents.BLOCK_NOTE_BLOCK_HAT.value(), SoundCategory.PLAYERS, 1.0f, 1.0f);
-                if (sec <= 3) players.playSound(SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.PLAYERS, 1.0f, 1.0f);
+                var format = sec <= 3 ? ChatFormatting.GREEN : ChatFormatting.DARK_GREEN;
+                players.showTitle(Component.literal(Integer.toString(sec)).withStyle(ChatFormatting.BOLD, format), 19);
+                players.playSound(SoundEvents.NOTE_BLOCK_HAT.value(), SoundSource.PLAYERS, 1.0f, 1.0f);
+                if (sec <= 3) players.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), SoundSource.PLAYERS, 1.0f, 1.0f);
             }
             startTimer--;
             if (startTimer == 0) {
-                players.showTitle(Text.translatable("title.deathrun.run").formatted(Formatting.BOLD, Formatting.GOLD), 40);
-                players.playSound(SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(), SoundCategory.PLAYERS, 1.0f, 1.0f);
-                players.playSound(SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.PLAYERS, 1.0f, 0.5f);
+                players.showTitle(Component.translatable("title.deathrun.run").withStyle(ChatFormatting.BOLD, ChatFormatting.GOLD), 40);
+                players.playSound(SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.PLAYERS, 1.0f, 1.0f);
+                players.playSound(SoundEvents.NOTE_BLOCK_BASS.value(), SoundSource.PLAYERS, 1.0f, 0.5f);
                 start();
             }
         }
@@ -345,7 +345,7 @@ public class DRGame {
                     if (player.team == DRTeam.RUNNERS && !player.finished) {
                         key = "message.deathrun.seconds_to_finish";
                     }
-                    pl.sendMessage(Text.translatable(key, (int)((float)endCountdown / 20)), true);
+                    pl.displayClientMessage(Component.translatable(key, (int)((float)endCountdown / 20)), true);
                 }
             });
             endCountdown--;
@@ -370,33 +370,33 @@ public class DRGame {
             // Void death
             player -> {
                 var serverP = player.getPlayer();
-                return serverP.getEntityPos().y < 0;
+                return serverP.position().y < 0;
             },
             // Water death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getEntityWorld();
-                var fluid = world.getFluidState(BlockPos.ofFloored(serverP.getEntityPos().add(0, 0.65, 0))).getFluid();
+                var world = serverP.level();
+                var fluid = world.getFluidState(BlockPos.containing(serverP.position().add(0, 0.65, 0))).getType();
                 return fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER;
             },
             // Lightning death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getEntityWorld();
-                return world.getEntitiesByClass(LightningEntity.class, serverP.getBoundingBox().expand(1.5, 1.5, 1.5), e -> true).size() > 0;
+                var world = serverP.level();
+                return world.getEntitiesOfClass(LightningBolt.class, serverP.getBoundingBox().inflate(1.5, 1.5, 1.5), e -> true).size() > 0;
             },
             // Arrow death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getEntityWorld();
-                return world.getEntitiesByClass(ArrowEntity.class, serverP.getBoundingBox().expand(0.08, 0.08, 0.08), e -> true).size() > 0;
+                var world = serverP.level();
+                return world.getEntitiesOfClass(Arrow.class, serverP.getBoundingBox().inflate(0.08, 0.08, 0.08), e -> true).size() > 0;
             },
             // Falling hazard death
             player -> {
                 var serverP = player.getPlayer();
-                var world = serverP.getEntityWorld();
-                return world.getEntitiesByClass(FallingBlockEntity.class, serverP.getBoundingBox(),
-                        e -> e.getBlockState().isOf(Blocks.POINTED_DRIPSTONE)).size() > 0;
+                var world = serverP.level();
+                return world.getEntitiesOfClass(FallingBlockEntity.class, serverP.getBoundingBox(),
+                        e -> e.getBlockState().is(Blocks.POINTED_DRIPSTONE)).size() > 0;
             }
     );
 
@@ -409,7 +409,7 @@ public class DRGame {
         private boolean finished = false;
         private int time = 0;
 
-        public Player(ServerPlayerEntity player, DRPlayerLogic logic, DRTeam team, DRGame game) {
+        public Player(ServerPlayer player, DRPlayerLogic logic, DRTeam team, DRGame game) {
             super(player, logic);
             this.team = team;
             this.game = game;
@@ -433,14 +433,14 @@ public class DRGame {
 
         @Override
         public void tick() {
-            var pos = getPlayer().getBlockPos();
+            var pos = getPlayer().blockPosition();
             if (team == DRTeam.RUNNERS) {
                 if (started && !finished) time++;
                 for (var predicate : DEATH_CONDITIONS) {
                     if (predicate.test(this)) {
                         var pl = getPlayer();
                         logic.resetActive(pl);
-                        playSoundToPlayer(pl, SoundEvents.ENTITY_GENERIC_HURT, SoundCategory.PLAYERS, 1, 1);
+                        playSoundToPlayer(pl, SoundEvents.GENERIC_HURT, SoundSource.PLAYERS, 1, 1);
                     }
                 }
                 for (CheckpointZone zone : game.map.checkpoints) {
@@ -451,7 +451,7 @@ public class DRGame {
                     }
                 }
                 if (finished) {
-                    getPlayer().addStatusEffect(new StatusEffectInstance(StatusEffects.INVISIBILITY, 5, 0, true, false, false));
+                    getPlayer().addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 5, 0, true, false, false));
                 } else if (game.map.finish.contains(pos)) {
                     game.finish(this);
                 }
@@ -460,31 +460,31 @@ public class DRGame {
             // or jump boost areas to help deaths get around
             for (EffectZone zone : game.map.effectZones) {
                 if (zone.bounds().contains(pos.getX(), pos.getY(), pos.getZ())) {
-                    getPlayer().addStatusEffect(zone.effect().createEffect());
+                    getPlayer().addEffect(zone.effect().createEffect());
                 }
             }
             if (team == DRTeam.DEATHS) {
-                getPlayer().addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 5, 3, true, false, false));
+                getPlayer().addEffect(new MobEffectInstance(MobEffects.SPEED, 5, 3, true, false, false));
             }
         }
 
         private void notifyCheckpoint() {
             var player = getPlayer();
-            player.sendMessage(Text.translatable("message.deathrun.checkpoint").formatted(Formatting.GREEN), false);
-            playSoundToPlayer(player, SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(), SoundCategory.MASTER, 0.9f, 0.79f);
-            playSoundToPlayer(player, SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(), SoundCategory.MASTER, 0.9f, 0.785f);
+            player.displayClientMessage(Component.translatable("message.deathrun.checkpoint").withStyle(ChatFormatting.GREEN), false);
+            playSoundToPlayer(player, SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.MASTER, 0.9f, 0.79f);
+            playSoundToPlayer(player, SoundEvents.NOTE_BLOCK_BASS.value(), SoundSource.MASTER, 0.9f, 0.785f);
         }
     }
 
     public static class ResetCandidate {
         private final DRGame game;
-        private final ServerWorld world;
+        private final ServerLevel world;
         private final ResettingDeathTrap deathTrap;
         private final DeathTrapZone zone;
         private int time = DEATH_TRAP_COOLDOWN - 35;
         public boolean removed = false;
 
-        public ResetCandidate(DRGame game, ServerWorld world, ResettingDeathTrap deathTrap, DeathTrapZone zone) {
+        public ResetCandidate(DRGame game, ServerLevel world, ResettingDeathTrap deathTrap, DeathTrapZone zone) {
             this.game = game;
             this.world = world;
             this.deathTrap = deathTrap;
